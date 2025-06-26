@@ -1,0 +1,23 @@
+[
+  { "english": "apple", "turkish": "elma" },
+  { "english": "book", "turkish": "kitap" },
+  { "english": "house", "turkish": "ev" },
+  { "english": "car", "turkish": "araba" },
+  { "english": "pen", "turkish": "kalem" },
+  { "english": "dog", "turkish": "köpek" },
+  { "english": "cat", "turkish": "kedi" },
+  { "english": "table", "turkish": "masa" },
+  { "english": "window", "turkish": "pencere" },
+  { "english": "chair", "turkish": "sandalye" },
+
+  { "english": "run", "turkish": "koşmak" },
+  { "english": "eat", "turkish": "yemek" },
+  { "english": "drink", "turkish": "içmek" },
+  { "english": "write", "turkish": "yazmak" },
+  { "english": "read", "turkish": "okumak" },
+  { "english": "listen", "turkish": "dinlemek" },
+  { "english": "sleep", "turkish": "uyumak" },
+  { "english": "wake", "turkish": "uyanmak" },
+  { "english": "laugh", "turkish": "gülmek" },
+  { "english": "cry", "turkish": "ağlamak" }
+]
