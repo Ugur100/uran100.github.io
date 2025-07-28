@@ -178,38 +178,56 @@ function finishSynonymQuiz() {
   const container = document.getElementById("question-container");
   const options = document.getElementById("options");
 
+  // --- Bitir'e basıldığında, ekrandaki checkbox'ların son halini userAnswers'a kaydet ---
+  const allCheckboxes = options.querySelectorAll('input[type="checkbox"]');
+  // Her checkbox'ın hangi soruya ait olduğunu bulmak için currentQuestionIndex'i kullanamayız, tüm sorular için bakmalıyız
+  // Bu yüzden, her sorunun şıkları için ayrı ayrı bakacağız
+  let tempAnswers = {};
+  for (let i = 0; i < totalQuestionsThisQuiz; i++) {
+    tempAnswers[i] = [];
+  }
+  allCheckboxes.forEach(cb => {
+    // cb.parentElement.parentElement = choiceContainer, onun parent'ı options
+    // Her checkbox'ın label'ı içinde, label'ın bir üstünde hangi soru olduğu yok, ama checkbox'ların sırası choices dizisine göre
+    // Sadece mevcut sorunun şıkları ekranda, o yüzden sadece currentQuestionIndex için güncelleme yapabiliriz
+    if (cb.checked) {
+      if (!tempAnswers[currentQuestionIndex]) tempAnswers[currentQuestionIndex] = [];
+      tempAnswers[currentQuestionIndex].push(cb.value);
+    }
+  });
+  // Sadece ekranda olan sorunun cevabını güncelle, diğerlerini eski userAnswers'tan al
+  let latestAnswers = {};
+  try {
+    latestAnswers = JSON.parse(localStorage.getItem(`synquiz_answers_${esanlamCurrentLevel}`)) || {};
+  } catch (e) {}
+  for (let i = 0; i < totalQuestionsThisQuiz; i++) {
+    if (i === currentQuestionIndex) {
+      userAnswers[i] = tempAnswers[i];
+    } else {
+      userAnswers[i] = (latestAnswers && latestAnswers[i]) ? latestAnswers[i] : [];
+    }
+  }
+
   let score = 0;
   for (let i = 0; i < totalQuestionsThisQuiz; i++) {
     const question = currentQuestions[i];
     const correctSynonyms = Array.isArray(question.synonyms) ? question.synonyms : [];
     const userSelected = Array.isArray(userAnswers[i]) ? userAnswers[i] : [];
-    // Sırasız ve fazladan işaret kontrolü: sadece doğru synonyms işaretlenmişse doğru kabul et
-    const correctSet = new Set(correctSynonyms);
-    const userSet = new Set(userSelected);
-    let isCorrect = true;
-    // Kullanıcı tüm doğru şıkları işaretlemiş mi?
-    for (const s of correctSet) {
-      if (!userSet.has(s)) {
-        isCorrect = false;
-        break;
-      }
-    }
-    // Kullanıcı fazladan yanlış şık işaretlemiş mi?
-    if (isCorrect) {
-      for (const s of userSet) {
-        if (!correctSet.has(s)) {
-          isCorrect = false;
-          break;
-        }
-      }
-    }
-    if (correctSynonyms.length > 0 && isCorrect) {
+    // Doğru şıkların tamamı işaretlenmiş ve yanlış işaret yoksa doğru kabul et
+    if (
+      correctSynonyms.length > 0 &&
+      correctSynonyms.every(s => userSelected.includes(s)) &&
+      userSelected.every(s => correctSynonyms.includes(s))
+    ) {
       score++;
       answeredCorrectlyInitially[i] = true;
     } else {
       answeredCorrectlyInitially[i] = false;
     }
   }
+
+  localStorage.setItem(`synquiz_answers_${esanlamCurrentLevel}`, JSON.stringify(userAnswers));
+  localStorage.setItem(`synquiz_correct_${esanlamCurrentLevel}`, JSON.stringify(answeredCorrectlyInitially));
 
   score = Math.round((score / totalQuestionsThisQuiz) * 100);
 
@@ -222,6 +240,9 @@ function finishSynonymQuiz() {
       esanlamMaxUnlockedLevel = nextLevel;
       renderLevelSelector();
       info.innerText = `✅ Tebrikler! ${score}% başarı ile Seviye ${esanlamCurrentLevel} tamamlandı.`;
+      // Başarıyla geçildiyse, önceki cevapları temizle
+      localStorage.removeItem(`synquiz_answers_${esanlamCurrentLevel}`);
+      localStorage.removeItem(`synquiz_correct_${esanlamCurrentLevel}`);
       setTimeout(() => startSynonymQuiz(nextLevel), 2000);
     } else {
       info.innerText = `✅ ${score}% başarı! Bu bölümü tekrar ettiniz.`;
@@ -242,6 +263,16 @@ function startSynonymQuiz(level) {
   userAnswers = {};
   answeredCorrectlyInitially = {};
 
+  // Eğer bu bölüm daha önce çözülmüşse, önceki cevapları yükle
+  const previousAnswersKey = `synquiz_answers_${esanlamCurrentLevel}`;
+  const previousCorrectKey = `synquiz_correct_${esanlamCurrentLevel}`;
+  let previousAnswers = {};
+  let previousCorrect = {};
+  try {
+    previousAnswers = JSON.parse(localStorage.getItem(previousAnswersKey)) || {};
+    previousCorrect = JSON.parse(localStorage.getItem(previousCorrectKey)) || {};
+  } catch (e) {}
+
   const info = document.getElementById("info");
   info.innerText = `Seviye ${esanlamCurrentLevel} | %80 başarı ile bir sonraki bölüme geçebilirsin.`;
 
@@ -258,11 +289,27 @@ function startSynonymQuiz(level) {
 
   localStorage.setItem(`synquiz_${esanlamCurrentLevel}`, JSON.stringify(currentQuestions));
   totalQuestionsThisQuiz = currentQuestions.length;
+
+  // Eğer önceki cevaplar varsa, userAnswers ve answeredCorrectlyInitially'yi doldur
+  if (Object.keys(previousAnswers).length > 0) {
+    userAnswers = previousAnswers;
+    answeredCorrectlyInitially = previousCorrect;
+  }
+
   showSynonymQuestion();
 }
 
 // Eş Anlamlı Soru Gösterici
 function showSynonymQuestion() {
+  // --- SORU DEĞİŞTİRİLMEDEN ÖNCE, EKRANDAKİ CEVABI KAYDET ---
+  function saveCurrentCheckboxes() {
+    const allCheckboxes = options.querySelectorAll('input[type="checkbox"]');
+    let selected = [];
+    allCheckboxes.forEach(cb => { if (cb.checked) selected.push(cb.value); });
+    userAnswers[currentQuestionIndex] = selected;
+    localStorage.setItem(`synquiz_answers_${esanlamCurrentLevel}`, JSON.stringify(userAnswers));
+  }
+
   const question = currentQuestions[currentQuestionIndex];
   const container = document.getElementById("question-container");
   const options = document.getElementById("options");
@@ -283,8 +330,8 @@ function showSynonymQuestion() {
   });
   // Eşsiz ve doğru şıklarda olmayanlardan rastgele seç
   let uniqueWrongs = Array.from(new Set(wrongs)).filter(w => !correctSynonyms.includes(w));
-  // En az 3 yanlış şık ekle, toplam şık sayısı 7+3=10 olabilir
-  let numWrong = Math.max(3, 10 - correctSynonyms.length);
+  // Her soru için yanlış şık sayısı: 2
+  let numWrong = 2;
   let selectedWrongs = [];
   while (selectedWrongs.length < numWrong && uniqueWrongs.length > 0) {
     const idx = Math.floor(Math.random() * uniqueWrongs.length);
@@ -304,8 +351,17 @@ function showSynonymQuestion() {
   choiceContainer.style.justifyContent = "center";
   choiceContainer.style.gap = "10px";
 
-  // Çoklu seçim için checkbox butonları
+  // --- HAFIZA YÖNETİMİ: userAnswers'ı her soruda localStorage'dan güncel olarak oku
+  let previousAnswers = {};
+  try {
+    previousAnswers = JSON.parse(localStorage.getItem(`synquiz_answers_${esanlamCurrentLevel}`)) || {};
+  } catch (e) {}
+  if (Object.keys(previousAnswers).length > 0) {
+    userAnswers = previousAnswers;
+  }
   let selectedSet = new Set(userAnswers[currentQuestionIndex] || []);
+  let isRetry = Object.keys(userAnswers).length > 0;
+  let correctSet = new Set(correctSynonyms);
   choices.forEach(choice => {
     const displayChoice = cleanWord(choice);
     const label = document.createElement("label");
@@ -321,7 +377,11 @@ function showSynonymQuestion() {
       if (checkbox.checked) selectedSet.add(choice);
       else selectedSet.delete(choice);
       userAnswers[currentQuestionIndex] = Array.from(selectedSet);
+      localStorage.setItem(`synquiz_answers_${esanlamCurrentLevel}`, JSON.stringify(userAnswers));
     };
+    if (isRetry && correctSet.has(choice)) {
+      checkbox.style.accentColor = "#4CAF50";
+    }
     label.appendChild(checkbox);
     label.appendChild(document.createTextNode(" " + displayChoice));
     choiceContainer.appendChild(label);
@@ -339,6 +399,7 @@ function showSynonymQuestion() {
     prevBtn.innerText = "← Önceki Soru";
     prevBtn.className = "styled-button";
     prevBtn.onclick = () => {
+      saveCurrentCheckboxes();
       currentQuestionIndex--;
       showSynonymQuestion();
     };
@@ -352,14 +413,20 @@ function showSynonymQuestion() {
     const nextBtn = document.createElement("button");
     nextBtn.innerText = "Sonraki Soru →";
     nextBtn.className = "styled-button";
-    nextBtn.onclick = nextSynonymQuestion;
+    nextBtn.onclick = () => {
+      saveCurrentCheckboxes();
+      nextSynonymQuestion();
+    };
     navContainer.appendChild(nextBtn);
   } else {
     // Son sorudayız, Bitir butonu ekle
     const finishBtn = document.createElement("button");
     finishBtn.innerText = "Bitir";
     finishBtn.className = "styled-button";
-    finishBtn.onclick = finishSynonymQuiz;
+    finishBtn.onclick = () => {
+      saveCurrentCheckboxes();
+      finishSynonymQuiz();
+    };
     navContainer.appendChild(finishBtn);
   }
 
@@ -380,6 +447,15 @@ function finishSynonymQuiz() {
   const container = document.getElementById("question-container");
   const options = document.getElementById("options");
 
+  // --- HAFIZA YÖNETİMİ: userAnswers'ı localStorage'dan en güncel haliyle oku
+  let latestAnswers = {};
+  try {
+    latestAnswers = JSON.parse(localStorage.getItem(`synquiz_answers_${esanlamCurrentLevel}`)) || {};
+  } catch (e) {}
+  if (Object.keys(latestAnswers).length > 0) {
+    userAnswers = latestAnswers;
+  }
+
   let score = 0;
   for (let i = 0; i < totalQuestionsThisQuiz; i++) {
     const question = currentQuestions[i];
@@ -398,6 +474,9 @@ function finishSynonymQuiz() {
     }
   }
 
+  localStorage.setItem(`synquiz_answers_${esanlamCurrentLevel}`, JSON.stringify(userAnswers));
+  localStorage.setItem(`synquiz_correct_${esanlamCurrentLevel}`, JSON.stringify(answeredCorrectlyInitially));
+
   score = Math.round((score / totalQuestionsThisQuiz) * 100);
 
   let savedLevel = parseInt(localStorage.getItem("esanlamMaxUnlockedLevel") || "1");
@@ -409,6 +488,9 @@ function finishSynonymQuiz() {
       esanlamMaxUnlockedLevel = nextLevel;
       renderLevelSelector();
       info.innerText = `✅ Tebrikler! ${score}% başarı ile Seviye ${esanlamCurrentLevel} tamamlandı.`;
+      // Başarıyla geçildiyse, önceki cevapları temizle
+      localStorage.removeItem(`synquiz_answers_${esanlamCurrentLevel}`);
+      localStorage.removeItem(`synquiz_correct_${esanlamCurrentLevel}`);
       setTimeout(() => startSynonymQuiz(nextLevel), 2000);
     } else {
       info.innerText = `✅ ${score}% başarı! Bu bölümü tekrar ettiniz.`;
